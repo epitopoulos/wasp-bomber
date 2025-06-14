@@ -79,7 +79,7 @@ ga_instance = pygad.GA(
     keep_parents=2,
     crossover_type="two_points",
     mutation_type="random",
-    mutation_percent_genes=20,
+    mutation_percent_genes=10,
     on_generation=on_generation
 )
 
