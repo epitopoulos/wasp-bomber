@@ -2,9 +2,15 @@ from math import dist
 from copy import deepcopy
 import pygad
 import matplotlib.pyplot as plt
+import numpy as np
+import matplotlib.ticker as mtick
 
+# — Optional: ensure any numpy-array printing uses max 3 decimals —
+np.set_printoptions(precision=3, suppress=True)
+
+# Data
 nests = [
-    {"id":1, "wasps":100, "x":25, "y": 65},
+    {"id":1, "wasps":100, "x":25, "y":65},
     {"id":2, "wasps":200, "x":23, "y":8},
     {"id":3, "wasps":327, "x":7,  "y":13},
     {"id":4, "wasps":440, "x":95, "y":53},
@@ -19,11 +25,12 @@ nests = [
 ]
 
 dmax = max(
-    dist((a["x"], a["y"]), (b["x"], b["y"])) for a in nests for b in nests
+    dist((a["x"], a["y"]), (b["x"], b["y"]))
+    for a in nests for b in nests
 )
 
 def kill_function(n, d, dmax):
-    return n * dmax / (20 * d + 0.00001)
+    return n * dmax / (20 * d + 1e-5)
 
 def evaluate_solution(bombs, nests, dmax):
     nests_copy = deepcopy(nests)
@@ -40,12 +47,6 @@ def evaluate_solution(bombs, nests, dmax):
 
     return total_kills
 
-test_bombs = [
-    {"x": 20, "y": 20},
-    {"x": 60, "y": 60},
-    {"x": 80, "y": 10}
-]
-
 def fitness_func(ga_instance, solution, solution_idx):
     bombs = [
         {"x": solution[0], "y": solution[1]},
@@ -53,26 +54,45 @@ def fitness_func(ga_instance, solution, solution_idx):
         {"x": solution[4], "y": solution[5]}
     ]
     score = evaluate_solution(bombs, nests, dmax)
-    return score
+    min_bomb_dist = min(
+        dist((bombs[i]["x"], bombs[i]["y"]), (bombs[j]["x"], bombs[j]["y"]))
+        for i in range(3) for j in range(i + 1, 3)
+    )
+    penalty = 100 * max(0, 10 - min_bomb_dist)
+    return score - penalty
 
-# To store best solutions and fitnesses per generation
 best_solutions = []
 best_fitnesses = []
 
+def local_search(solution, step=2):
+    best_solution = solution.copy()
+    best_score = fitness_func(None, best_solution, 0)
+    for i in range(len(solution)):
+        for delta in (-step, step):
+            temp = solution.copy()
+            temp[i] = np.clip(temp[i] + delta, 0, 100)
+            score = fitness_func(None, temp, 0)
+            if score > best_score:
+                best_solution, best_score = temp.copy(), score
+    return best_solution, best_score
+
 def on_generation(ga):
-    best_solution, best_solution_fitness, _ = ga.best_solution()
-    best_solutions.append(best_solution)
-    best_fitnesses.append(best_solution_fitness)
-    print(f"Generation {ga.generations_completed}: Best Fitness = {best_solution_fitness:.2f}")
+    sol, fit, _ = ga.best_solution()
+    improved_sol, improved_fit = local_search(sol)
+    if improved_fit > fit:
+        ga.population[0] = improved_sol
+        sol, fit = improved_sol, improved_fit
+    best_solutions.append(sol)
+    best_fitnesses.append(fit)
+    print(f"Generation {ga.generations_completed}: Best Fitness = {fit:.3f}")
 
-# --- PY-GAD SETUP ---
+# GA setup
 gene_space = {"low": 0, "high": 100}
-
 ga_instance = pygad.GA(
     num_generations=350,
     num_parents_mating=20,
     fitness_func=fitness_func,
-    sol_per_pop=60,
+    sol_per_pop=100,
     num_genes=6,
     gene_space=gene_space,
     parent_selection_type="sss",
@@ -83,58 +103,58 @@ ga_instance = pygad.GA(
     on_generation=on_generation
 )
 
-# --- RUN GA ---
+# Run
 ga_instance.run()
 
-# --- RESULTS ---
+# Results
 solution, solution_fitness, _ = ga_instance.best_solution()
-print("Best solution:", solution)
-print("Wasp kills:", solution_fitness)
+print("Best solution:", [round(x,3) for x in solution])
+print(f"Wasp kills: {solution_fitness:.3f}")
 
-def plot_solution(solution):
-    bombs = [(solution[0], solution[1]), (solution[2], solution[3]), (solution[4], solution[5])]
-    nest_coords = [(n['x'], n['y']) for n in nests]
+# Helper for 3-decimal tick formatting
+def format_axes(ax):
+    fmt = mtick.FormatStrFormatter('%.3f')
+    ax.xaxis.set_major_formatter(fmt)
+    ax.yaxis.set_major_formatter(fmt)
 
-    plt.figure(figsize=(8, 8))
-    plt.scatter(*zip(*nest_coords), color='orange', label='Nests', s=100)
-    plt.scatter(*zip(*bombs), color='red', marker='X', label='Bombs', s=100)
-    plt.xlim(0, 100)
-    plt.ylim(0, 100)
-    plt.grid(True)
-    plt.legend()
-    plt.title('Bomb and Nest Locations')
-    plt.show()
-
+# Plots
 def plot_progress(fitnesses):
-    plt.plot(range(1, len(fitnesses) + 1), fitnesses)
+    plt.figure(figsize=(8,6))
+    plt.plot(range(1, len(fitnesses)+1), fitnesses)
     plt.xlabel("Generation")
-    plt.ylabel("Wasp Kills (Best Solution)")
+    plt.ylabel("Best Wasp Kills")
     plt.title("Progress of Best Solution per Generation")
     plt.grid(True)
+    ax = plt.gca()
+    format_axes(ax)
     plt.show()
 
-def plot_population(population):
+def plot_solution(sol):
+    bombs = [(sol[0], sol[1]), (sol[2], sol[3]), (sol[4], sol[5])]
     nest_coords = [(n['x'], n['y']) for n in nests]
-
-    plt.figure(figsize=(8, 8))
+    plt.figure(figsize=(8,8))
     plt.scatter(*zip(*nest_coords), color='orange', label='Nests', s=100)
-
-    for sol in population:
-        bombs = [(sol[0], sol[1]), (sol[2], sol[3]), (sol[4], sol[5])]
-        plt.scatter(*zip(*bombs), color='blue', alpha=0.3, s=20)
-
-    plt.xlim(0, 100)
-    plt.ylim(0, 100)
-    plt.grid(True)
-    plt.legend(['Nests', 'Population Bombs'])
-    plt.title('Population Bomb Positions in Last Generation')
+    plt.scatter(*zip(*bombs), color='red', marker='X', label='Bombs', s=100)
+    plt.xlim(0,100); plt.ylim(0,100); plt.grid(True); plt.legend()
+    plt.title('Bomb and Nest Locations')
+    ax = plt.gca()
+    format_axes(ax)
     plt.show()
 
-# Plot progress of best fitness per generation
+def plot_population(pop):
+    nest_coords = [(n['x'], n['y']) for n in nests]
+    plt.figure(figsize=(8,8))
+    plt.scatter(*zip(*nest_coords), color='orange', label='Nests', s=100)
+    for sol in pop:
+        b = [(sol[0],sol[1]),(sol[2],sol[3]),(sol[4],sol[5])]
+        plt.scatter(*zip(*b), color='blue', alpha=0.3, s=20)
+    plt.xlim(0,100); plt.ylim(0,100); plt.grid(True); plt.legend(['Nests','Population Bombs'])
+    plt.title('Population Bomb Positions in Last Generation')
+    ax = plt.gca()
+    format_axes(ax)
+    plt.show()
+
+# Show plots
 plot_progress(best_fitnesses)
-
-# Plot final best solution bombs and nests
 plot_solution(best_solutions[-1])
-
-# Plot bombs of all individuals in the last generation
 plot_population(ga_instance.population)
