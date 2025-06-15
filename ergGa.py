@@ -2,6 +2,7 @@ from math import dist
 from copy import deepcopy
 import pygad
 import matplotlib.pyplot as plt
+import numpy as np
 
 nests = [
     {"id":1, "wasps":100, "x":25, "y": 65},
@@ -52,20 +53,52 @@ def fitness_func(ga_instance, solution, solution_idx):
         {"x": solution[2], "y": solution[3]},
         {"x": solution[4], "y": solution[5]}
     ]
+    # Calculate base fitness (wasps killed)
     score = evaluate_solution(bombs, nests, dmax)
-    return score
+    
+    # Calculate minimum distance between any pair of bombs
+    min_bomb_dist = min(
+        dist((bombs[i]["x"], bombs[i]["y"]), (bombs[j]["x"], bombs[j]["y"]))
+        for i in range(3)
+        for j in range(i + 1, 3)
+    )
+    
+    # Apply penalty if bombs are too close (less than 10 units)
+    penalty = 100 * max(0, 10 - min_bomb_dist)  # Penalty scales with proximity
+    final_score = score - penalty
+    
+    return final_score
 
 # To store best solutions and fitnesses per generation
 best_solutions = []
 best_fitnesses = []
 
+def local_search(solution, step=2):
+    best_solution = solution.copy()
+    best_score = fitness_func(None, best_solution, 0)
+    for i in range(len(solution)):
+        for delta in [-step, step]:
+            temp_solution = solution.copy()
+            temp_solution[i] += delta
+            temp_solution[i] = np.clip(temp_solution[i], 0, 100)
+            score = fitness_func(None, temp_solution, 0)
+            if score > best_score:
+                best_solution = temp_solution.copy()
+                best_score = score
+    return best_solution, best_score
+
 def on_generation(ga):
     best_solution, best_solution_fitness, _ = ga.best_solution()
+    # Apply local search to the best solution
+    improved_solution, improved_fitness = local_search(best_solution)
+    # Update population with improved solution if better
+    if improved_fitness > best_solution_fitness:
+        ga.population[0] = improved_solution
+        best_solution = improved_solution
+        best_solution_fitness = improved_fitness
     best_solutions.append(best_solution)
     best_fitnesses.append(best_solution_fitness)
-    print(f"Generation {ga.generations_completed}: Best Fitness = {best_solution_fitness:.4f}")
-    # Adaptive mutation
-    ga.mutation_percentilemutation_rate = max(20 * (1 - ga.generations_completed / 350), 5)
+    print(f"Generation {ga.generations_completed}: Best Fitness = {best_solution_fitness:.2f}")
 
 # --- PY-GAD SETUP ---
 gene_space = {"low": 0, "high": 100}
@@ -81,7 +114,7 @@ ga_instance = pygad.GA(
     keep_parents=2,
     crossover_type="two_points",
     mutation_type="random",
-    mutation_percent_genes=20,
+    mutation_percent_genes=10,
     on_generation=on_generation
 )
 
