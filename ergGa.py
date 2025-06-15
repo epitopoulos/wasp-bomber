@@ -63,7 +63,9 @@ def on_generation(ga):
     best_solution, best_solution_fitness, _ = ga.best_solution()
     best_solutions.append(best_solution)
     best_fitnesses.append(best_solution_fitness)
-    print(f"Generation {ga.generations_completed}: Best Fitness = {best_solution_fitness:.2f}")
+    print(f"Generation {ga.generations_completed}: Best Fitness = {best_solution_fitness:.4f}")
+    # Adaptive mutation
+    ga.mutation_percentilemutation_rate = max(20 * (1 - ga.generations_completed / 350), 5)
 
 # --- PY-GAD SETUP ---
 gene_space = {"low": 0, "high": 100}
@@ -72,14 +74,14 @@ ga_instance = pygad.GA(
     num_generations=350,
     num_parents_mating=20,
     fitness_func=fitness_func,
-    sol_per_pop=60,
+    sol_per_pop=100,  # Increased population size from 60 to 100
     num_genes=6,
     gene_space=gene_space,
     parent_selection_type="sss",
     keep_parents=2,
     crossover_type="two_points",
     mutation_type="random",
-    mutation_percent_genes=5,
+    mutation_percent_genes=20,
     on_generation=on_generation
 )
 
